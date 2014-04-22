@@ -1,6 +1,5 @@
 KANNELCONF = gw-config
 PGCONF = pg_config
-#MBUNIDIR = ../
 INCS =  -I/usr/local/include
 CFLAGS = -Wno-deprecated-declarations  -Wall -fPIC  -g  `$(KANNELCONF) --cflags | sed 's/-O.//g'` -I`$(PGCONF) --includedir`
 LDFLAGS= -L`$(PGCONF) --libdir` -lpq -lssl
