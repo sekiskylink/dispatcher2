@@ -30,6 +30,8 @@ struct dispatcher2conf{
     char db_conninfo[512];
     double request_process_interval;
     int max_retries;
+    int start_submission_period;
+    int end_submission_period;
 };
 
 typedef struct dispatcher2conf *dispatcher2conf_t;

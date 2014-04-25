@@ -37,7 +37,9 @@ struct dispatcher2conf config = {
     5,
     "host=localhost dbname=skytools user=postgres password=postgres",
     45,
-    3
+    3,
+    7, /*hours*/
+    23
 };
 
 static List *server_req_list;
@@ -81,6 +83,8 @@ int main(int argc, char *argv[])
 
         gwlist_produce(server_req_list, x);
     }
+
+    stop_request_processor();
 
     gwlist_remove_producer(server_req_list);
     gwthread_join_every((void *)dispatch_processor);

@@ -1,13 +1,49 @@
 #include <gwlib/gwlib.h>
 #include <unistd.h>
 #include <ctype.h>
+#include <time.h>
 #include <libpq-fe.h>
+#include <libxml/xmlmemory.h>
+#include <libxml/parser.h>
+#include <libxml/xpath.h>
 
 #include "request_processor.h"
 
 static dispatcher2conf_t dispatcher2conf;
 static List *srvlist;
-static HTTPCaller *caller;
+
+xmlChar *findvalue(xmlDocPtr doc, xmlChar *xpath){
+    xmlNodeSetPtr nodeset;
+    xmlChar * value;
+    xmlXPathContextPtr context;
+    xmlXPathObjectPtr result;
+    int i;
+
+    if(!doc)
+        return NULL;
+    context = xmlXPathNewContext(doc);
+    if(!context)
+        return NULL;
+    result = xmlXPathEvalExpression(xpath, context);
+    if(!result)
+        return NULL;
+    if(xmlXPathNodeSetIsEmpty(result->nodesetval)){
+        xmlXPathFreeObject(result);
+        return NULL;
+    }
+    nodeset = result->nodesetval;
+    /* We return first match */
+    for (i=0; i < nodeset->nodeNr; i++) {
+        value = xmlNodeListGetString(doc, nodeset->nodeTab[i]->xmlChildrenNode, 1);
+        if(value)
+            break;
+    }
+    xmlXPathFreeContext(context);
+    xmlXPathFreeObject(result);
+    xmlCleanupParser();
+
+    return value;
+}
 
 #define REQUEST_SQL "SELECT id FROM requests WHERE status = 'ready'"
 
@@ -30,6 +66,7 @@ Octstr * post_xmldata_to_server(PGconn *c, int serverid, Octstr *data) {
     char tmp[64], *x;
     Octstr *url = NULL, *user = NULL, *passwd = NULL;
     const char *pvals[] = {tmp};
+    HTTPCaller *caller;
 
     List *request_headers;
     Octstr *furl = NULL, *rbody = NULL, *body = octstr_imm("");
@@ -78,13 +115,14 @@ Octstr * post_xmldata_to_server(PGconn *c, int serverid, Octstr *data) {
 }
 
 void do_request(PGconn *c, int64_t rid) {
-    char tmp[64], *cmd, *x, buf[256];
+    char tmp[64], *cmd, *x, buf[256], st[64];
     PGresult *r;
-    int nargs, retries, serverid;
-    int64_t submissionid;
+    int retries, serverid;
+    /* int64_t submissionid; */
     Octstr *data;
-    const char *pvals[] = {tmp, buf};
+    const char *pvals[] = {tmp, st, buf};
     Octstr *resp;
+    xmlDocPtr doc;
 
     sprintf(tmp, "%lld", rid);
 
@@ -103,9 +141,18 @@ void do_request(PGconn *c, int64_t rid) {
     x = PQgetvalue(r, 0, 1);
     data = (x && x[0]) ? octstr_create(x) : NULL; /* POST XML*/
     PQclear(r);
+
+    if (retries > dispatcher2conf->max_retries) {
+        r = PQexecParams(c, "UPDATE requests SET ldate = timeofday()::timestamp, "
+                "status = 'expired' WHERE id = $1",
+                1, NULL, pvals, NULL, NULL, 0);
+        PQclear(r);
+        return;
+    }
+
     if (data == NULL){
         r = PQexecParams(c, "UPDATE requests SET ldate = timeofday()::timestamp, "
-                "status = 'failed' WHERE id = $1",
+                "statuscode='ERROR1', status = 'failed' WHERE id = $1",
                 1, NULL, pvals, NULL, NULL, 0);
         PQclear(r);
         /* Mark this one as failed*/
@@ -116,31 +163,53 @@ void do_request(PGconn *c, int64_t rid) {
 
     if (resp == NULL) {
         r = PQexecParams(c, "UPDATE requests SET ldate = timeofday()::timestamp, "
-                "status = 'failed' WHERE id = $1",
+                "statuscode = 'ERROR2', status = 'failed' WHERE id = $1",
                 1, NULL, pvals, NULL, NULL, 0);
         PQclear(r);
         return;
     }
-    /* parse response */
+    /* parse response - hopefully it is xml */
+    doc = xmlParseMemory(octstr_get_cstr(resp), octstr_len(resp));
+
+    if (doc == NULL) {
+        /* either failed to parse resp or resp wasn't xml */
+        r = PQexecParams(c, "UPDATE requests SET ldate = timeofday()::timestamp, "
+                "statuscode = 'ERROR3',status = 'failed' WHERE id = $1",
+                1, NULL, pvals, NULL, NULL, 0);
+        PQclear(r);
+        return;
+    }
+
+    sprintf(st, "%s", findvalue(doc, (xmlChar *)"//status"));
+    sprintf(buf, "Imp:%s Ign:%s Up:%s",
+            findvalue(doc, (xmlChar *)"//dataValueCount[1]/@imported"),
+            findvalue(doc, (xmlChar *)"//dataValueCount[1]/@ignored"),
+            findvalue(doc, (xmlChar *)"//dataValueCount[1]/@updated"));
+    r = PQexecParams(c, "UPDATE requests SET ldate = timeofday()::timestamp, "
+            "statuscode=$2, status = 'completed', errmsg = $3 WHERE id = $1",
+            3, NULL, pvals, NULL, NULL, 0);
+    PQclear(r);
 
     octstr_destroy(resp);
+    xmlFreeDoc(doc);
 }
 
 static void request_run(PGconn *c) {
     int64_t *rid;
     if (srvlist != NULL)
         gwlist_add_producer(srvlist);
-    while((rid = gwlist_consume(req_list)) != 0) {
+    while((rid = gwlist_consume(req_list)) != NULL) {
         PGresult *r;
         char tmp[64];
         Octstr *xkey;
+        int64_t xid = *rid;
         /* heal connection if bad*/
         r = PQexec(c, "BEGIN");
         PQclear(r);
 
-        sprintf(tmp, "%lld", *rid);
+        sprintf(tmp, "%lld", xid);
         xkey = octstr_format("Request-%s", tmp);
-        do_request(c, *rid);
+        do_request(c, xid);
 
         r = PQexec(c, "COMMIT");
         PQclear(r);
@@ -171,16 +240,17 @@ static void run_request_processor(PGconn *c)
 
     req_dict = dict_create(config->num_threads * MAX_QLEN + 1, NULL);
     req_list = gwlist_create();
+    gwlist_add_producer(req_list);
 
     for (i = num_threads = 0; i<config->num_threads; i++) {
-        PGconn *conn = PQconnectdb(config->db_conninfo);
+        PGconn *c = PQconnectdb(config->db_conninfo);
 
-        if (PQstatus(conn) != CONNECTION_OK) {
+        if (PQstatus(c) != CONNECTION_OK) {
             error(0, "request_processor: Failed to connect to database: %s",
-		     PQerrorMessage(conn));
-	        PQfinish(conn);
+		     PQerrorMessage(c));
+	        PQfinish(c);
         } else {
-            gwthread_create((void *)request_run, conn);
+            gwthread_create((void *)request_run, c);
             num_threads++;
         }
     }
@@ -191,8 +261,18 @@ static void run_request_processor(PGconn *c)
     do {
         PGresult *r;
         long i, n;
+        time_t t = time(NULL);
+        struct tm tm = gw_localtime(t);
+
+        if (!(tm.tm_hour >= config->start_submission_period
+                    && tm.tm_hour <= config->end_submission_period)){
+            /* warning(0, "We're out of submission period"); */
+            gwthread_sleep(config->request_process_interval);
+            continue; /* we're outide submission period so stay silent*/
+        }
 
         gwthread_sleep(config->request_process_interval);
+        /*  info(0, "We got here ###############%d\n", gwlist_len(req_list)); */
 
         if (qstop)
             break;
@@ -218,9 +298,12 @@ static void run_request_processor(PGconn *c)
             Octstr *xkey = octstr_format("Request-%s", y);
             if (dict_put_once(req_dict, xkey, (void*)1) == 1) { /* Item not in queue waiting*/
                 int64_t rid;
-                rid = y && isdigit(y[0]) ? strtoul(y, NULL, 10) : -1;
+                rid = y && isdigit(y[0]) ? strtoul(y, NULL, 10) : 0;
 
-                gwlist_produce(req_list, &rid);
+                int64_t *x = gw_malloc(sizeof *x);
+                *x = rid;
+
+                gwlist_produce(req_list, x);
                 octstr_destroy(xkey);
             }
         }
@@ -256,3 +339,17 @@ void start_request_processor(dispatcher2conf_t config, List *server_req_list)
     srvlist = server_req_list;
     rthread_th = gwthread_create((void *) run_request_processor, c);
 }
+
+void stop_request_processor(void)
+{
+
+     qstop = 1;
+     gwthread_sleep(2); /* Give them some time */
+     gwthread_wakeup(rthread_th);
+
+     gwthread_sleep(2); /* Give them some time */
+     gwthread_join(rthread_th);
+
+     info(0, "Request processor shutdown complete");
+}
+
