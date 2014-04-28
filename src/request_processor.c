@@ -1,6 +1,7 @@
 #include <gwlib/gwlib.h>
 #include <unistd.h>
 #include <ctype.h>
+#include <stdint.h>
 #include <time.h>
 #include <libpq-fe.h>
 #include <libxml/xmlmemory.h>
@@ -40,7 +41,6 @@ xmlChar *findvalue(xmlDocPtr doc, xmlChar *xpath){
     }
     xmlXPathFreeContext(context);
     xmlXPathFreeObject(result);
-    xmlCleanupParser();
 
     return value;
 }
@@ -61,7 +61,7 @@ static List *req_list; /* Of Request id */
 static Dict *req_dict; /* For keeping list short*/
 
 /* Post XML to server using basic auth and return response */
-Octstr * post_xmldata_to_server(PGconn *c, int serverid, Octstr *data) {
+Octstr *post_xmldata_to_server(PGconn *c, int serverid, Octstr *data) {
     PGresult *r;
     char tmp[64], *x;
     Octstr *url = NULL, *user = NULL, *passwd = NULL;
@@ -93,7 +93,7 @@ Octstr * post_xmldata_to_server(PGconn *c, int serverid, Octstr *data) {
     PQclear(r);
 
     request_headers = http_create_empty_headers();
-    http_header_add(request_headers, "Content-Type", "text/xml; charset=\"ISO-8859-1\"");
+    http_header_add(request_headers, "Content-Type", "text/xml");
     http_add_basic_auth(request_headers, user, passwd);
 
     caller = http_caller_create();
@@ -109,8 +109,10 @@ Octstr * post_xmldata_to_server(PGconn *c, int serverid, Octstr *data) {
     octstr_destroy(furl);
     /*  octstr_destroy(rbody); */
 
-    if (status == -1)
+    if (status == -1){
+        if(rbody) octstr_destroy(rbody);
         return NULL;
+    }
     return rbody;
 }
 
@@ -123,6 +125,7 @@ void do_request(PGconn *c, int64_t rid) {
     const char *pvals[] = {tmp, st, buf};
     Octstr *resp;
     xmlDocPtr doc;
+    xmlChar *s, *im, *ig, *up;
 
     sprintf(tmp, "%lld", rid);
 
@@ -172,7 +175,6 @@ void do_request(PGconn *c, int64_t rid) {
     doc = xmlParseMemory(octstr_get_cstr(resp), octstr_len(resp));
 
     if (doc == NULL) {
-        /* either failed to parse resp or resp wasn't xml */
         r = PQexecParams(c, "UPDATE requests SET ldate = timeofday()::timestamp, "
                 "statuscode = 'ERROR3',status = 'failed' WHERE id = $1",
                 1, NULL, pvals, NULL, NULL, 0);
@@ -180,18 +182,26 @@ void do_request(PGconn *c, int64_t rid) {
         return;
     }
 
-    sprintf(st, "%s", findvalue(doc, (xmlChar *)"//status"));
-    sprintf(buf, "Imp:%s Ign:%s Up:%s",
-            findvalue(doc, (xmlChar *)"//dataValueCount[1]/@imported"),
-            findvalue(doc, (xmlChar *)"//dataValueCount[1]/@ignored"),
-            findvalue(doc, (xmlChar *)"//dataValueCount[1]/@updated"));
+    s = findvalue(doc, (xmlChar *)"//status");
+    im = findvalue(doc, (xmlChar *)"//dataValueCount[1]/@imported");
+    ig = findvalue(doc, (xmlChar *)"//dataValueCount[1]/@ignored");
+    up = findvalue(doc, (xmlChar *)"//dataValueCount[1]/@updated");
+
+    sprintf(st, "%s", s);
+    sprintf(buf, "Imp:%s Ign:%s Up:%s",im, ig, up);
+    if(s) xmlFree(s);
+    if(im) xmlFree(im);
+    if(ig) xmlFree(ig);
+    if(up) xmlFree(up);
+
     r = PQexecParams(c, "UPDATE requests SET ldate = timeofday()::timestamp, "
             "statuscode=$2, status = 'completed', errmsg = $3 WHERE id = $1",
             3, NULL, pvals, NULL, NULL, 0);
     PQclear(r);
 
     octstr_destroy(resp);
-    xmlFreeDoc(doc);
+    if(doc)
+        xmlFreeDoc(doc);
 }
 
 static void request_run(PGconn *c) {
@@ -243,14 +253,14 @@ static void run_request_processor(PGconn *c)
     gwlist_add_producer(req_list);
 
     for (i = num_threads = 0; i<config->num_threads; i++) {
-        PGconn *c = PQconnectdb(config->db_conninfo);
+        PGconn *conn = PQconnectdb(config->db_conninfo);
 
-        if (PQstatus(c) != CONNECTION_OK) {
+        if (PQstatus(conn) != CONNECTION_OK) {
             error(0, "request_processor: Failed to connect to database: %s",
-		     PQerrorMessage(c));
-	        PQfinish(c);
+		     PQerrorMessage(conn));
+	        PQfinish(conn);
         } else {
-            gwthread_create((void *)request_run, c);
+            gwthread_create((void *)request_run, conn);
             num_threads++;
         }
     }
@@ -272,7 +282,7 @@ static void run_request_processor(PGconn *c)
         }
 
         gwthread_sleep(config->request_process_interval);
-        /*  info(0, "We got here ###############%d\n", gwlist_len(req_list)); */
+        /*info(0, "We got here ###############%ld\n", gwlist_len(req_list));*/
 
         if (qstop)
             break;

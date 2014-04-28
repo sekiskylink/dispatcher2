@@ -38,9 +38,16 @@ struct dispatcher2conf config = {
     "host=localhost dbname=skytools user=postgres password=postgres",
     45,
     3,
-    7, /*hours*/
+    7, /*hours -default 7*/
     23
 };
+
+static void quit_now(int unused)
+{
+     stop = 1;
+     if (config.http_port > 0)
+	  http_close_port(config.http_port);
+}
 
 static List *server_req_list;
 
@@ -53,6 +60,8 @@ int main(int argc, char *argv[])
     gwlib_init();
     HTTPClient *client = NULL;
 
+    signal(SIGTERM, quit_now);
+    signal(SIGINT, quit_now);
     signal(SIGPIPE, SIG_IGN); /* Ignore piping us*/
 
     if (http_open_port(config.http_port, 0) < 0)
@@ -94,6 +103,7 @@ int main(int argc, char *argv[])
 
 
     gwlib_shutdown();
+    xmlCleanupParser();
     return 0;
 }	/* ----------  end of function main  ---------- */
 
