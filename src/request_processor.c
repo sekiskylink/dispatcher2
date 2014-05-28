@@ -78,7 +78,7 @@ static List *req_list; /* Of Request id */
 static Dict *req_dict; /* For keeping list short*/
 
 /* Post XML to server using basic auth and return response */
-Octstr *post_xmldata_to_server(PGconn *c, int serverid, Octstr *data) {
+static Octstr *post_xmldata_to_server(PGconn *c, int serverid, Octstr *data) {
     PGresult *r;
     char tmp[64], *x;
     Octstr *url = NULL, *user = NULL, *passwd = NULL;
