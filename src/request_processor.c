@@ -93,7 +93,7 @@ Octstr *post_xmldata_to_server(PGconn *c, int serverid, Octstr *data) {
     PQclear(r);
 
     request_headers = http_create_empty_headers();
-    http_header_add(request_headers, "Content-Type", "text/xml");
+    http_header_add(request_headers, "Content-Type", "application/xml");
     http_add_basic_auth(request_headers, user, passwd);
 
     caller = http_caller_create();
