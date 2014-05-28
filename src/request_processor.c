@@ -14,7 +14,7 @@
 static dispatcher2conf_t dispatcher2conf;
 static List *srvlist;
 
-xmlChar *findvalue(xmlDocPtr doc, xmlChar *xpath, int add_namespace){
+static xmlChar *findvalue(xmlDocPtr doc, xmlChar *xpath, int add_namespace){
     xmlNodeSetPtr nodeset;
     xmlChar * value;
     xmlXPathContextPtr context;
@@ -64,7 +64,7 @@ xmlChar *findvalue(xmlDocPtr doc, xmlChar *xpath, int add_namespace){
 
 #define REQUEST_SQL "SELECT id FROM requests WHERE status = 'ready'"
 
-void init_request_processor_sql(PGconn *c)
+static void init_request_processor_sql(PGconn *c)
 {
     PGresult *r;
     if (PQstatus(c) != CONNECTION_OK)
@@ -132,7 +132,7 @@ Octstr *post_xmldata_to_server(PGconn *c, int serverid, Octstr *data) {
     return rbody;
 }
 
-void do_request(PGconn *c, int64_t rid) {
+static void do_request(PGconn *c, int64_t rid) {
     char tmp[64], *cmd, *x, buf[256], st[64];
     PGresult *r;
     int retries, serverid;
