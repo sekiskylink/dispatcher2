@@ -7,29 +7,46 @@
 #include <libxml/xmlmemory.h>
 #include <libxml/parser.h>
 #include <libxml/xpath.h>
+#include <libxml/xpathInternals.h>
 
 #include "request_processor.h"
 
 static dispatcher2conf_t dispatcher2conf;
 static List *srvlist;
 
-xmlChar *findvalue(xmlDocPtr doc, xmlChar *xpath){
+xmlChar *findvalue(xmlDocPtr doc, xmlChar *xpath, int add_namespace){
     xmlNodeSetPtr nodeset;
     xmlChar * value;
     xmlXPathContextPtr context;
     xmlXPathObjectPtr result;
     int i;
 
-    if(!doc)
+    if(!doc){
+        info(0, "Null Doc for %s", xpath);
         return NULL;
+    }
     context = xmlXPathNewContext(doc);
-    if(!context)
+    if(!context){
+        info(0, "Null context for %s", xpath);
         return NULL;
+    }
+
+    if (add_namespace){
+        xmlChar *prefix = (xmlChar *) "xmlns";
+        xmlChar *href = (xmlChar *) "http://dhis2.org/schema/dxf/2.0";
+        if (xmlXPathRegisterNs(context, prefix, href) != 0){
+            info(0, "Unable to register NS:%s", prefix);
+            return NULL;
+        }
+    }
     result = xmlXPathEvalExpression(xpath, context);
-    if(!result)
+    if(!result){
+        info(0, "Null result for %s", xpath);
         return NULL;
+    }
     if(xmlXPathNodeSetIsEmpty(result->nodesetval)){
         xmlXPathFreeObject(result);
+        debug(0, "xmlXPathNodeSetIsEmpty for %s", xpath);
         return NULL;
     }
     nodeset = result->nodesetval;
@@ -69,7 +86,7 @@ Octstr *post_xmldata_to_server(PGconn *c, int serverid, Octstr *data) {
     HTTPCaller *caller;
 
     List *request_headers;
-    Octstr *furl = NULL, *rbody = NULL, *body = octstr_imm("");
+    Octstr *furl = NULL, *rbody = NULL;
     int method = HTTP_METHOD_POST;
     int status = -1;
 
@@ -97,7 +114,7 @@ Octstr *post_xmldata_to_server(PGconn *c, int serverid, Octstr *data) {
     http_add_basic_auth(request_headers, user, passwd);
 
     caller = http_caller_create();
-    http_start_request(caller, method, url, request_headers, body, 1, NULL, NULL);
+    http_start_request(caller, method, url, request_headers, data, 1, NULL, NULL);
     http_receive_result_real(caller, &status, &furl, &request_headers, &rbody, 1);
 
     http_caller_destroy(caller);
@@ -105,7 +122,6 @@ Octstr *post_xmldata_to_server(PGconn *c, int serverid, Octstr *data) {
     octstr_destroy(user);
     octstr_destroy(passwd);
     octstr_destroy(url);
-    octstr_destroy(body);
     octstr_destroy(furl);
     /*  octstr_destroy(rbody); */
 
@@ -144,6 +160,7 @@ void do_request(PGconn *c, int64_t rid) {
     x = PQgetvalue(r, 0, 1);
     data = (x && x[0]) ? octstr_create(x) : NULL; /* POST XML*/
     PQclear(r);
+    info(0, "Post Data %s", octstr_get_cstr(data));
 
     if (retries > dispatcher2conf->max_retries) {
         r = PQexecParams(c, "UPDATE requests SET ldate = timeofday()::timestamp, "
@@ -171,6 +188,7 @@ void do_request(PGconn *c, int64_t rid) {
         PQclear(r);
         return;
     }
+    info(0, "Response Data %s", octstr_get_cstr(resp));
     /* parse response - hopefully it is xml */
     doc = xmlParseMemory(octstr_get_cstr(resp), octstr_len(resp));
 
@@ -182,10 +200,10 @@ void do_request(PGconn *c, int64_t rid) {
         return;
     }
 
-    s = findvalue(doc, (xmlChar *)"//status");
-    im = findvalue(doc, (xmlChar *)"//dataValueCount[1]/@imported");
-    ig = findvalue(doc, (xmlChar *)"//dataValueCount[1]/@ignored");
-    up = findvalue(doc, (xmlChar *)"//dataValueCount[1]/@updated");
+    s = findvalue(doc, (xmlChar *)"//xmlns:status", 1); /* third arg is 0 if no namespace required*/
+    im = findvalue(doc, (xmlChar *)"//xmlns:dataValueCount[1]/@imported", 1);
+    ig = findvalue(doc, (xmlChar *)"//xmlns:dataValueCount[1]/@ignored", 1);
+    up = findvalue(doc, (xmlChar *)"//xmlns:dataValueCount[1]/@updated", 1);
 
     sprintf(st, "%s", s);
     sprintf(buf, "Imp:%s Ign:%s Up:%s",im, ig, up);
