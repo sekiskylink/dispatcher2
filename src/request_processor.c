@@ -46,7 +46,7 @@ xmlChar *findvalue(xmlDocPtr doc, xmlChar *xpath, int add_namespace){
     }
     if(xmlXPathNodeSetIsEmpty(result->nodesetval)){
         xmlXPathFreeObject(result);
-        debug(0, "xmlXPathNodeSetIsEmpty for %s", xpath);
+        info(0, "xmlXPathNodeSetIsEmpty for %s", xpath);
         return NULL;
     }
     nodeset = result->nodesetval;
