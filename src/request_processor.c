@@ -109,7 +109,8 @@ static Octstr *post_xmldata_to_server(PGconn *c, int serverid, Octstr *data) {
     url = (x && x[0]) ? octstr_create(x) : NULL;
     PQclear(r);
 
-    request_headers = http_create_empty_headers();
+    /*  request_headers = http_create_empty_headers();*/
+    request_headers = gwlist_create();
     http_header_add(request_headers, "Content-Type", "application/xml");
     http_add_basic_auth(request_headers, user, passwd);
 
@@ -224,6 +225,8 @@ static void do_request(PGconn *c, int64_t rid) {
 
 static void request_run(PGconn *c) {
     int64_t *rid;
+    dispatcher2conf_t config = dispatcher2conf;
+
     if (srvlist != NULL)
         gwlist_add_producer(srvlist);
     while((rid = gwlist_consume(req_list)) != NULL) {
@@ -231,6 +234,17 @@ static void request_run(PGconn *c) {
         char tmp[64];
         Octstr *xkey;
         int64_t xid = *rid;
+
+        time_t t = time(NULL);
+        struct tm tm = gw_localtime(t);
+
+        if (!(tm.tm_hour >= config->start_submission_period
+                    && tm.tm_hour <= config->end_submission_period)){
+            /* warning(0, "We're out of submission period"); */
+            gwthread_sleep(config->request_process_interval);
+            continue; /* we're outide submission period so stay silent*/
+        }
+
         /* heal connection if bad*/
         r = PQexec(c, "BEGIN");
         PQclear(r);
