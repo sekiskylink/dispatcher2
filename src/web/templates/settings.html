@@ -1,0 +1,36 @@
+{% extends "layout.html" %}
+{% block title %}dispacher2.::.Settings{% endblock %}
+{% from 'layout.html' import navbar2, myscripts %}
+
+{% block nav %}
+    {% call navbar2() %}
+       <li class="dropdown">
+           <a href="#" class="dropdown-toggle" data-toggle="dropdown">Control Panel <b class="caret"></b></a>
+           <ul class="dropdown-menu">
+                <li><a href="/projects">Projects</a></li>
+                <li><a href="/activities">Activities</a></li>
+                <li><a href="/quantities">Measuration Qty</a></li>
+                <li><a href="/input">Data Input</a></li>
+                <li><a href="/boq">Project Data</a></li>
+                <li class="divider"></li>
+                <li class="nav-header">Admin Panel</li>
+                <li><a href="/users">Users</a></li>
+                <li><a href="/settings">Settings</a></li>
+           </ul>
+       </li>
+    {% endcall %}
+{% endblock %}
+{% block contens %}
+    <form name="" method="post" action="">
+        <table>
+            <tr><td>Name:</td><td><input name="name" type="text" class=""/></td></tr>
+            <tr><td>Address:</td><td><input name="address" type="text" class="" /></td></tr>
+            <tr><td>Email:</td><td><input name="email" type="text" class="" /></td></tr>
+            <tr><td>Telephone:</td><td><input name="tel" type="text" class="" /></td></tr>
+        </table>
+    </form>
+{% endblock %}
+{% block scripts %}
+    {% call myscripts() %}
+    {% endcall %}
+{% endblock %}

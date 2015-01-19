@@ -1,0 +1,32 @@
+{% extends "layout.html" %}
+{% from 'layout.html' import navbar2, myscripts, err %}
+
+{% block title %}dispacher2.::.Users{% endblock%}
+{% block nav %}
+    {% call navbar2() %}
+        <li class="dropdown">
+            <a href="#" class="dropdown-toggle" data-toggle="dropdown">Control Panel <b class="caret"></b></a>
+            <ul class="dropdown-menu">
+              <li><a href="/suppliers">Suppliers</a></li>
+              <li><a href="/rawmaterials">Raw Materials</a></li>
+              <li><a href="/products">Products</a></li>
+              <li><a href="/transactions">Transactions</a></li>
+              <li class="divider"></li>
+              <li class="nav-header">Admin Panel</li>
+              <li><a href="/users">Users</a></li>
+              <li><a href="/settings">Settings</a></li>
+            </ul>
+        </li>
+    {% endcall %}
+{% endblock %}
+
+{% block content %}
+    {{ err(ses.logon_err) }}
+    {{ err(err_msg)}}
+
+{% endblock %}
+
+{% block scripts%}
+    {% call myscripts() %}
+    {% endcall %}
+{% endblock %}

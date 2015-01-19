@@ -1,0 +1,95 @@
+{% extends "layout.html" %}
+{% block title %}dispacher2.::.Failed{% endblock%}
+{% from 'layout.html' import navbar2, myscripts, err %}
+
+{% block nav %}
+    {% call navbar2() %}
+       <li class="dropdown">
+           <a href="#" class="dropdown-toggle" data-toggle="dropdown">Control Panel <b class="caret"></b></a>
+           <ul class="dropdown-menu">
+             <li><a href="/requests">All Requests</a></li>
+             <li><a href="/completed">Completed Requests</a></li>
+             <li><a href="/failed" class="active">Failed Requests</a></li>
+             <li><a href="/ready" class="active">Ready Requests</a></li>
+             <li><a href="/search">Search Requests</a></li>
+             <li class="divider"></li>
+             <li class="nav-header">Admin Panel</li>
+             <li><a href="/users">Users</a></li>
+             <li><a href="/settings">Settings</a></li>
+           </ul>
+       </li>
+    {% endcall %}
+{% endblock %}
+
+{%block content %}
+    {{ err(err_msg) }}
+    <form name="p" method="post" action="">
+    <br/>
+    <div class="newitem">
+        <input name="pbtn" id="pbtn" class="btn" type="submit" value="Retry Selected"/>
+        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+        <input name="pbtn" class="btn" type="submit" value="Delete Selected"/>
+    </div>
+    <br/>
+    <table class="table table-condensed" style="padding-bottom: 0px; margin-bottom:0px; border-bottom:none;
+        background-color:#333333;color:ffffff;">
+            <tr><th style="color:#fff">Requests</th><th></th></tr>
+    </table>
+    <table id="resTable" class="table table-condensed  table-striped table-bordered tablesorter">
+        <thead>
+        <tr>
+            <th>#</th>
+            <th><input id="selecctall" class=".chkmark" type="checkbox"/></th>
+            <th>Submission ID</th>
+            <th>Creation Date</th>
+            <th>Year</th>
+            <th>Week</th>
+            <th>Status</th>
+            <th>Status Code</th>
+            <th>Response Msg</th>
+            <th>Action</th></tr>
+        </thead>
+        <tbody>
+        {% for l in res %}
+            <tr>
+                <td>{{ loop.index }}</td>
+                <td><input name="reqid" class="topromote" value="{{ l.id }}" type="checkbox"/></td>
+                <td>{{ l.submissionid}}</td>
+                <td>{{ l.cdate }}</td>
+                <td>{{ l.year }}</td>
+                <td>{{ l.week }}</td>
+                <td>{{ l.status }}</td>
+                <td>{{ l.statuscode }}</td>
+                <td>{{ l.errmsg }}</td>
+                <td>
+                    <a href="/activities?ed={{ l.id }}&page={{ page }}"><i class="icon-edit"></i></a>
+                    &nbsp;&nbsp;&nbsp;
+                    <a href="/activities?d_id={{ l.id }}&page={{ page }}" onclick="return confirm('Are you sure you want to delete?')"><i class="icon-remove"></i></a>
+                </td>
+            </tr>
+        {% endfor%}
+        </tbody>
+    </table>
+    {{ pagination_str }}
+    </form>
+{% endblock %}
+
+{% block scripts %}
+    {% call myscripts() %}
+    <script type="text/javascript">
+        $(document).ready(function() {
+            // $("#resTable").tablesorter();
+            // add multiple select / deselect functionality
+            $('#selecctall').click(function (event) {
+                // $('input:checkbox').prop('checked', this.checked);
+                $('.topromote:input:checkbox').prop('checked', this.checked);
+            });
+            $(".topromote").click(function () {
+                if (!$(this).is(':checked'))
+                    $("#selecctall").prop('checked', false);
+            });
+
+        });
+    </script>
+    {% endcall %}
+{% endblock %}

@@ -1,0 +1,53 @@
+{% extends "layout.html" %}
+{% from 'layout.html' import navbar2, myscripts, err %}
+
+{% block title %}dispacher2.::.Home{% endblock%}
+{% block nav %}
+    {% call navbar2() %}
+        {% if ses.loggedin %}
+        <li class="dropdown">
+            <a href="#" class="dropdown-toggle" data-toggle="dropdown">Control Panel <b class="caret"></b></a>
+            <ul class="dropdown-menu">
+                <li><a href="/requests">All Requests</a></li>
+                <li><a href="/completed" class="active">Completed Requests</a></li>
+                <li><a href="/failed">Failed Requests</a></li>
+                <li><a href="/ready">Ready Requests</a></li>
+                <li><a href="/search">Search Requests</a></li>
+              <li class="divider"></li>
+              <li class="nav-header">Admin Panel</li>
+              <li><a href="/users">Users</a></li>
+              <li><a href="/settings">Settings</a></li>
+            </ul>
+        </li>
+        {% endif %}
+    {% endcall %}
+{% endblock %}
+
+
+{% block content %}
+    {{ err(ses.logon_err) }}
+    {{ err(err_msg)}}
+    <h4>This is a management web interface for all the queued mTrac data submissions for DHIS2<br/></h4>
+    <p>The interface shows all queued requests and has separate dashboards for:
+        <ul>
+            <li>List of all  queued submissions -> <a href="/requests">All Submissions</a></li>
+            <li>Successfully submitted submissions -> <a href="/completed">Completed</a></li>
+            <li>All failed submissions -> <a href="/failed">Failed</a></li>
+            <li>Searching submissions by preference filters-> <a href="/search">Search</a></li>
+        </ul>
+    </p>
+
+    <p>Each failed submission request has some "statuscode" indicating the reason for failure. The following are the different status codes and their corresponding meanings:
+    <ul>
+        <li><b>ERROR1</b> Means that the queued request has a blank body for the XML request</li>
+        <li><b>ERROR2</b> Means that after posting XML request to DHIS2 server, the server returned an empty respose</li>
+        <li><b>ERROR3</b> Means that dispacher2 failed to parse the response returned by DHIS2 server</li>
+        <li><b>ERROR4</b> Means that there was a problem while queuing this submission</li>
+    </ul>
+    </p>
+{% endblock %}
+
+{% block scripts%}
+    {% call myscripts() %}
+    {% endcall %}
+{% endblock %}
