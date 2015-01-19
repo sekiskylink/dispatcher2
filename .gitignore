@@ -3,3 +3,4 @@ src/dispatcher2
 *.o
 *~
 *.old
+.DS_Store
