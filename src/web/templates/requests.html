@@ -65,9 +65,9 @@
                 <td>{{ l.statuscode }}</td>
                 <td>{{ l.errmsg }}</td>
                 <td>
-                    <a href="/activities?ed={{ l.id }}&page={{ page }}"><i class="icon-edit"></i></a>
+                    <a href="/requests?ed={{ l.id }}&page={{ page }}"><i class="icon-edit"></i></a>
                     &nbsp;&nbsp;&nbsp;
-                    <a href="/activities?d_id={{ l.id }}&page={{ page }}" onclick="return confirm('Are you sure you want to delete?')"><i class="icon-remove"></i></a>
+                    <a href="/requests?d_id={{ l.id }}&page={{ page }}" onclick="return confirm('Are you sure you want to delete?')"><i class="icon-remove"></i></a>
                 </td>
             </tr>
         {% endfor%}
