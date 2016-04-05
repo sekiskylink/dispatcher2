@@ -27,6 +27,7 @@ urllib._urlopener = AppURLopener()
 
 logging.basicConfig(
     format='%(asctime)s:%(levelname)s:%(message)s', filename='/var/log/dispatcher/dispatcher2-web.log',
+    # format='%(asctime)s:%(levelname)s:%(message)s', filename='/tmp/dispatcher2-web.log',
     datefmt='%Y-%m-%d %I:%M:%S', level=logging.DEBUG
 )
 
@@ -43,6 +44,7 @@ urls = (
     "/completed", "Completed",
     "/requests", "Requests",
     "/ready", "Ready",
+    "/search", "Search",
     "/users", "Admin",
     "/logout", "Logout"
 )
@@ -60,7 +62,7 @@ db = web.database(
 )
 
 store = web.session.DBStore(db, 'sessions')
-session = web.session.Session(app, store, initializer={'loggedin': False})
+session = web.session.Session(app, store, initializer={'loggedin': False, 'criteria': ""})
 
 render = render_jinja(
     'templates',
@@ -305,6 +307,91 @@ class Users:
         l = locals()
         del l['self']
         return render.users(**l)
+
+
+class Search:
+    @require_login
+    def GET(self):
+        params = web.input(page=1)
+        try:
+            page = int(params.page)
+        except:
+            page = 1
+
+        limit = SETTINGS['PAGE_LIMIT']
+        start = (page - 1) * limit if page > 0 else 0
+
+        dic = lit(
+            relations='requests', fields="*",
+            criteria=session.criteria,
+            order="id desc",
+            limit=limit, offset=start)
+        if session.criteria:
+            res = doquery(db, dic)
+            count = countquery(db, dic)
+            pagination_str = getPaginationString(default(page, 0), count, limit, 2, "search", "?page=")
+
+        l = locals()
+        del l['self']
+        return render.search(**l)
+
+    def POST(self):
+        params = web.input(
+            page=1, reqid=[], submissionid="", request_body="", sdate="", edate="",
+            status="", year="", week="", pbtn="")
+        try:
+            page = int(params.page)
+        except:
+            page = 1
+
+        limit = SETTINGS['PAGE_LIMIT']
+        start = (page - 1) * limit if page > 0 else 0
+
+        with db.transaction():
+            if params.pbtn == 'Retry Selected':
+                if params.reqid:
+                    for val in params.reqid:
+                        db.update('requests', where="id = %s" % val, status='ready')
+            if params.pbtn == 'Cancel Selected':
+                if params.reqid:
+                    for val in params.reqid:
+                        db.delete('requests', where="id = %s" % val)
+            db.transaction().commit()
+
+        criteria = "TRUE "
+        if params.submissionid:
+            criteria += " AND submissionid = %s" % params.submissionid
+        if params.status:
+            criteria += " AND status = '%s' " % params.status
+        if params.sdate:
+            criteria += " AND cdate >= '%s'" % params.sdate
+        if params.edate:
+            criteria += " AND cdate <= '%s'" % params.edate
+        if params.week:
+            criteria += " AND week = '%s'" % params.week
+        if params.request_body:
+            criteria += " AND request_body ILIKE '%%%s%%'" % params.request_body
+        if params.year:
+            criteria += " AND year = '%s'" % params.year
+        if params.formatting:
+            if params.formatting == "xml":
+                criteria += " AND xml_is_well_formed(request_body)"
+
+        print criteria
+        if len(criteria) > 5:
+            session.criteria = criteria
+        dic = lit(
+            relations='requests', fields="*",
+            criteria=criteria,
+            order="id desc",
+            limit=limit, offset=start)
+        res = doquery(db, dic)
+        count = countquery(db, dic)
+        pagination_str = getPaginationString(default(page, 0), count, limit, 2, "search", "?page=")
+
+        l = locals()
+        del l['self']
+        return render.search(**l)
 
 
 class Settings:
